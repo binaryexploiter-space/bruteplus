@@ -54,13 +54,16 @@ pip3 install -r requirements.txt
 
 This will:
 
-<ul><li> Copy the bruteplus binary to /usr/local/bin</li>
-<li> Set it as executable for all users</li></ul>
-<code>bash
+<ul><li>Copy the bruteplus binary to /usr/local/bin</li>
+<li>Set it as executable for all users</li></ul>
+
+```bash
 sudo python3 setup.py install
-</code>
+```
 After installation, you can simply run:
-```bashbruteplus```
+```bash
+bruteplus
+```
 ## 📄 Usage
 
 Run the tool:
@@ -69,7 +72,7 @@ bruteplus
 ```
 Follow the interactive menus to:
 
-<ul><li>Generate brute force commands for Hydra or WPScan
+<ul><li>Generate brute force commands for Hydra or WPScan</li>
     <li>Copy them automatically to your clipboard</li>
     <li>Optionally execute them right from the tool</li></ul>
 Commands are also saved to ~/.bruteplus_history.
