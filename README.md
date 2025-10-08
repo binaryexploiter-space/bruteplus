@@ -50,7 +50,7 @@ cd bruteplus
 ```bash
 pip3 install -r requirements.txt
 ```
-3️⃣ Run setup
+### 3️⃣ Run setup
 
 This will:
 
