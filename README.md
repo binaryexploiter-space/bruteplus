@@ -47,3 +47,31 @@ git clone https://github.com/yourusername/bruteplus.git
 cd bruteplus
 ```
 ### 2️⃣ Install Python dependencies
+```bash
+pip3 install -r requirements.txt
+```
+3️⃣ Run setup
+
+This will:
+
+<ul> Copy the bruteplus binary to /usr/local/bin</ul>
+<ul> Set it as executable for all users</ul>
+```bash
+sudo python3 setup.py install
+```
+After installation, you can simply run:
+```bash
+bruteplus
+```
+📄 Usage
+
+Run the tool:
+```bash
+bruteplus
+```
+Follow the interactive menus to:
+
+<ul>Generate brute force commands for Hydra or WPScan</ul>
+<ul>Copy them automatically to your clipboard</ul>
+<ul>Optionally execute them right from the tool</ul>
+Commands are also saved to ~/.bruteplus_history.
