@@ -56,13 +56,11 @@ This will:
 
 <ul><li> Copy the bruteplus binary to /usr/local/bin</li>
 <li> Set it as executable for all users</li></ul>
-```bash
+<code>bash
 sudo python3 setup.py install
-```
+</code>
 After installation, you can simply run:
-```bash
-bruteplus
-```
+```bashbruteplus```
 ## 📄 Usage
 
 Run the tool:
