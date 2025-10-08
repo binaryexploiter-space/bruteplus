@@ -1,34 +1,38 @@
-from setuptools import setup
-from setuptools.command.install import install
+#!/usr/bin/env python3
 import os
-import stat
+import subprocess
 import shutil
+import sys
 
-class CustomInstallCommand(install):
-    def run(self):
-        install.run(self)
+def install_requirements():
+    req_file = "requirements.txt"
+    if os.path.exists(req_file):
+        print("[*] Installing Python dependencies...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "-r", req_file], check=True)
+    else:
+        print("[*] No requirements.txt found. Skipping dependency installation.")
 
-        src_file = os.path.join(os.getcwd(), 'bruteplus')
-        dest_file = '/usr/local/bin/bruteplus'
+def move_binary():
+    binary_name = "bruteplus"  # The script in current directory
+    src_path = os.path.join(os.getcwd(), binary_name)
+    dest_path = f"/usr/local/bin/{binary_name}"
 
-        print(f'[+] Installing bruteplus to {dest_file} ...')
+    if not os.path.exists(src_path):
+        print(f"[!] {binary_name} not found in current directory.")
+        sys.exit(1)
 
-        # Copy file to /usr/local/bin
-        shutil.copyfile(src_file, dest_file)
+    print(f"[*] Moving {binary_name} to /usr/local/bin ...")
+    shutil.copy(src_path, dest_path)
 
-        # Make it executable for all users
-        os.chmod(dest_file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+    print("[*] Setting executable permissions...")
+    subprocess.run(["chmod", "777", dest_path], check=True)
 
-        print('[+] Installation completed!')
-        print('[*] You can now run the tool using: bruteplus')
+    print(f"[+] Installed successfully! You can now run: {binary_name}")
 
-setup(
-    name='bruteplus',
-    version='2.1',
-    description='Hydra & WPScan Command Generator and Runner',
-    author='Oshan Ravindu',
-    scripts=['bruteplus'],
-    cmdclass={
-        'install': CustomInstallCommand,
-    }
-)
+if __name__ == "__main__":
+    if os.geteuid() != 0:
+        print("[!] Please run this script with sudo.")
+        sys.exit(1)
+
+    install_requirements()
+    move_binary()
