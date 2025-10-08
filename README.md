@@ -44,6 +44,6 @@ Before installing, make sure you have:
 ### 1️⃣ Clone the repository
 ```bash
 git clone https://github.com/yourusername/bruteplus.git
-cd bruteplus```
-
+cd bruteplus
+```
 ### 2️⃣ Install Python dependencies
