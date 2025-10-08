@@ -1,0 +1,547 @@
+#!/usr/bin/env python3
+"""
+BrutePlus v2.1 - Hydra & WPScan Command Generator (Interactive, non-forcing)
+
+- Grouped, colorful, user-friendly CLI with pretty banner
+- Generates hydra commands for many services and wpscan commands for WordPress
+- Optionally executes the generated command if user chooses (runs subprocess in same terminal)
+- Settings persisted in JSON at ~/.bruteplus_config.json (auto-created)
+- Clipboard auto-copy (optional, requires pyperclip)
+- Default wordlist fallback to /usr/share/wordlists/rockyou.txt
+- Command history saved to ~/.bruteplus_history
+
+IMPORTANT: Only run generated commands against systems you own or have explicit permission to test.
+This tool can execute commands you generate — be responsible.
+"""
+
+from __future__ import annotations
+import json
+import os
+import sys
+import time
+import subprocess
+from pathlib import Path
+from typing import Optional, Dict
+
+# Optional UI libs
+try:
+    from colorama import init as colorama_init, Fore, Style
+    colorama_init(autoreset=True)
+except Exception:
+    # minimal fallback
+    class _C:
+        RED = GREEN = YELLOW = CYAN = MAGENTA = WHITE = ''
+    Fore = _C()
+    Style = _C()
+
+try:
+    import pyfiglet
+except Exception:
+    pyfiglet = None
+
+try:
+    import pyperclip
+    PYPERCLIP = True
+except Exception:
+    PYPERCLIP = False
+
+# ------------------ Config & Paths ------------------
+HOME = str(Path.home())
+CONFIG_PATH = os.path.join(HOME, '.bruteplus_config.json')
+HISTORY_PATH = os.path.join(HOME, '.bruteplus_history')
+DEFAULT_WORDLIST = '/usr/share/wordlists/rockyou.txt'
+
+DEFAULT_CONFIG = {
+    'auto_clear': True,
+    'clipboard': True,
+    'banner_mode': 'menu',  # 'menu' or 'startup'
+    'default_wordlist': DEFAULT_WORDLIST
+}
+
+# ------------------ Helpers ------------------
+
+def save_json(path: str, data: Dict) -> None:
+    try:
+        with open(path, 'w') as fh:
+            json.dump(data, fh, indent=2)
+    except Exception as e:
+        print(Fore.RED + f'Failed to save config: {e}')
+
+
+def load_config() -> Dict:
+    if not os.path.exists(CONFIG_PATH):
+        # create default config
+        try:
+            save_json(CONFIG_PATH, DEFAULT_CONFIG)
+            print(Fore.YELLOW + f'Created default config at {CONFIG_PATH}')
+        except Exception:
+            pass
+        return DEFAULT_CONFIG.copy()
+    try:
+        with open(CONFIG_PATH, 'r') as fh:
+            cfg = json.load(fh)
+    except Exception:
+        cfg = DEFAULT_CONFIG.copy()
+    # ensure keys
+    for k, v in DEFAULT_CONFIG.items():
+        if k not in cfg:
+            cfg[k] = v
+    return cfg
+
+CONFIG = load_config()
+
+
+def cls():
+    if CONFIG.get('auto_clear', True):
+        os.system('cls' if os.name == 'nt' else 'clear')
+
+
+def banner():
+    if pyfiglet:
+        art = pyfiglet.figlet_format('BrutePlus', font='slant')
+        print(Fore.CYAN + art + Style.RESET_ALL)
+    else:
+        print(Fore.CYAN + '=== BrutePlus ===' + Style.RESET_ALL)
+    print(Fore.YELLOW + 'Hydra & WPScan Command Generator (generator-only)' + Style.RESET_ALL)
+    print(Fore.MAGENTA + 'LEGAL: Only test targets you own or have explicit permission to test.' + Style.RESET_ALL)
+
+
+def timestamp():
+    return time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+
+
+def save_history(cmd: str) -> None:
+    try:
+        with open(HISTORY_PATH, 'a') as fh:
+            fh.write(f'[{timestamp()}] {cmd}\n')
+    except Exception:
+        pass
+
+
+def try_copy_clipboard(text: str) -> bool:
+    if not CONFIG.get('clipboard', True):
+        return False
+    if not PYPERCLIP:
+        return False
+    try:
+        pyperclip.copy(text)
+        return True
+    except Exception:
+        return False
+
+# ------------------ Defaults ------------------
+DEFAULT_PORTS = {
+    'ssh': '22',
+    'ftp': '21',
+    'telnet': '23',
+    'rdp': '3389',
+    'vnc': '5900',
+    'smtp-auth': '587',
+    'pop3': '110',
+    'imap': '143',
+    'http-get': '80',
+    'http-head': '80',
+    'http-form-post': '80',
+    'http-form-get': '80',
+    'mysql': '3306',
+    'mssql': '1433',
+    'smb': '445'
+}
+
+# ------------------ Utilities ------------------
+
+def input_with_default(prompt: str, default: Optional[str] = None) -> str:
+    if default:
+        res = input(Fore.GREEN + f'👉 {prompt} [{default}]: ' + Style.RESET_ALL).strip()
+        return res if res else default
+    return input(Fore.GREEN + f'👉 {prompt}: ' + Style.RESET_ALL).strip()
+
+
+def choose_yes_no(prompt: str, default: bool = True) -> bool:
+    d = 'Y/n' if default else 'y/N'
+    res = input(Fore.GREEN + f'👉 {prompt} ({d}): ' + Style.RESET_ALL).strip().lower()
+    if not res:
+        return default
+    return res[0] == 'y'
+
+
+def ensure_wordlist(path: Optional[str]) -> str:
+    if path and path.strip():
+        return path.strip()
+    fallback = CONFIG.get('default_wordlist', DEFAULT_WORDLIST)
+    if os.path.exists(fallback):
+        print(Fore.YELLOW + f'Using default wordlist: {fallback}')
+        return fallback
+    else:
+        print(Fore.YELLOW + f'Default wordlist not found at {fallback}. Please provide a wordlist path.')
+        while True:
+            p = input(Fore.GREEN + '👉 Path to password list: ' + Style.RESET_ALL).strip()
+            if os.path.exists(p):
+                return p
+            print(Fore.RED + 'File not found. Try again.')
+
+# ------------------ Command Generators ------------------
+
+def generate_hydra(kind: str) -> str:
+    cls()
+    if CONFIG.get('banner_mode','menu') == 'menu':
+        banner()
+    print(Fore.CYAN + f'-- Generate Hydra command: {kind} --' + Style.RESET_ALL)
+
+    # Target
+    target = input_with_default('Target (IP or hostname)', '')
+    while not target:
+        print(Fore.RED + 'Target cannot be blank')
+        target = input_with_default('Target (IP or hostname)', '')
+
+    # Port
+    default_port = DEFAULT_PORTS.get(kind, '')
+    if default_port:
+        use_default = choose_yes_no(f'Use default port {default_port}?', default=True)
+    else:
+        use_default = False
+    if use_default and default_port:
+        port = default_port
+    else:
+        port = input_with_default('Custom port (leave blank to skip -s)', default_port if default_port else '')
+
+    # threads
+    tasks = input_with_default('Parallel tasks/threads', '4')
+
+    # username handling
+    use_single_user = choose_yes_no('Use single username? (otherwise a username list will be used)', default=False)
+    user_single = ''
+    userlist = ''
+    if use_single_user:
+        user_single = input_with_default('Username', '')
+        while not user_single:
+            print(Fore.RED + 'Username cannot be blank')
+            user_single = input_with_default('Username', '')
+    else:
+        userlist = input_with_default('Path to username list', '')
+        while not userlist:
+            print(Fore.RED + 'Username list cannot be blank')
+            userlist = input_with_default('Path to username list', '')
+
+    # password list
+    passlist = input_with_default('Path to password list (leave blank for default)', '')
+    passlist = ensure_wordlist(passlist)
+
+    extra = input_with_default('Extra hydra args (e.g. -vV -f) (optional)', '')
+
+    # HTTP specific
+    path = ''
+    post_data = ''
+    get_data = ''
+    fail_condition = ''
+    if kind in ('http-get', 'http-head', 'http-form-post', 'http-form-get'):
+        path = input_with_default('Path (URI) to login endpoint (e.g. login.php)', '')
+    if kind == 'http-form-post':
+        print(Fore.YELLOW + '\nHint: use ^USER^ and ^PASS^ placeholders in post data for hydra')
+        print(Fore.YELLOW + 'Example: username=^USER^&password=^PASS^')
+        post_data = input_with_default('POST data (use ^USER^ and ^PASS^)', '')
+        while not post_data:
+            print(Fore.RED + 'POST data cannot be blank for http-form-post')
+            post_data = input_with_default('POST data (use ^USER^ and ^PASS^)', '')
+        fail_condition = input_with_default('Failure condition (string that indicates login failure)', 'F=Incorrect')
+    if kind == 'http-form-get':
+        print(Fore.YELLOW + '\nHint: use ^USER^ and ^PASS^ placeholders in GET data for hydra')
+        get_data = input_with_default('GET data (use ^USER^ and ^PASS^)', '')
+        while not get_data:
+            print(Fore.RED + 'GET data cannot be blank for http-form-get')
+            get_data = input_with_default('GET data (use ^USER^ and ^PASS^)', '')
+        fail_condition = input_with_default('Failure condition (string that indicates login failure)', 'F=Incorrect')
+
+    # Build command parts
+    parts = ['hydra']
+    if use_single_user:
+        parts += ['-l', user_single]
+    else:
+        parts += ['-L', userlist]
+    parts += ['-P', passlist]
+    if port:
+        parts += ['-s', port]
+    if tasks:
+        parts += ['-t', tasks]
+    if extra:
+        parts += extra.split()
+
+    # Target + module specifics
+    if kind in ('http-get', 'http-head'):
+        module = 'http-get' if kind == 'http-get' else 'http-head'
+        if not path.startswith('/'):
+            path = '/' + path if path else '/'
+        parts += [target, module, path]
+    elif kind == 'http-form-post':
+        if not path.startswith('/'):
+            path = '/' + path if path else '/'
+        form_spec = f"{path}:{post_data}:{fail_condition}"
+        parts += [target, 'http-post-form', f"'{form_spec}'"]
+    elif kind == 'http-form-get':
+        if not path.startswith('/'):
+            path = '/' + path if path else '/'
+        form_spec = f"{path}:{get_data}:{fail_condition}"
+        parts += [target, 'http-form-get', f"'{form_spec}'"]
+    else:
+        parts += [target, kind]
+
+    cmd = ' '.join(parts)
+    return cmd
+
+
+def generate_wpscan() -> str:
+    cls()
+    if CONFIG.get('banner_mode','menu') == 'menu':
+        banner()
+    print(Fore.CYAN + '-- WordPress Bruteforce Options --' + Style.RESET_ALL)
+    print('  1) Brute username list (enumeration)')
+    print('  2) Brute password for a known username')
+    print('  3) Back')
+    choice = input_with_default('\nChoose option', '3')
+    if choice == '1':
+        url = input_with_default('Target URL (e.g. http://10.0.0.5)', '')
+        while not url:
+            print(Fore.RED + 'URL cannot be blank')
+            url = input_with_default('Target URL (e.g. http://10.0.0.5)', '')
+        userlist = input_with_default('Path to username list (required)', '')
+        while not userlist:
+            print(Fore.RED + 'Username list cannot be blank')
+            userlist = input_with_default('Path to username list (required)', '')
+        extra = input_with_default('Extra wpscan args (optional)', '')
+        # WPScan supports --usernames parameter for a list; use --enumerate u for enumeration
+        cmd = f"wpscan --url {url} --usernames {userlist} --enumerate u {extra}".strip()
+        return cmd
+    elif choice == '2':
+        url = input_with_default('Target URL (e.g. http://10.0.0.5)', '')
+        while not url:
+            print(Fore.RED + 'URL cannot be blank')
+            url = input_with_default('Target URL (e.g. http://10.0.0.5)', '')
+        username = input_with_default('Known username', '')
+        while not username:
+            print(Fore.RED + 'Username cannot be blank')
+            username = input_with_default('Known username', '')
+        wordlist = input_with_default('Password wordlist (leave blank for default rockyou)', '')
+        wordlist = ensure_wordlist(wordlist)
+        extra = input_with_default('Extra wpscan args (e.g. --threads 50) (optional)', '')
+        # WPScan usage: --usernames <user> --passwords <file> or --wordlist depending on version; commonly: --usernames admin --wordlist <file>
+        cmd = f"wpscan --url {url} --usernames {username} --wordlist {wordlist} {extra}".strip()
+        return cmd
+    else:
+        return ''
+
+# ------------------ Menus ------------------
+
+def show_history():
+    print(Fore.CYAN + '\nCommand History (most recent last):' + Style.RESET_ALL)
+    if not os.path.exists(HISTORY_PATH):
+        print(Fore.YELLOW + 'No history found.' + Style.RESET_ALL)
+        return
+    with open(HISTORY_PATH, 'r') as fh:
+        data = fh.read().strip()
+    print(data if data else Fore.YELLOW + 'No history entries')
+
+
+def settings_menu():
+    print(Fore.CYAN + '\nSettings' + Style.RESET_ALL)
+    print(f"1) Auto-clear screen: {'ON' if CONFIG.get('auto_clear') else 'OFF'}")
+    print(f"2) Clipboard auto-copy: {'ON' if CONFIG.get('clipboard') else 'OFF'}")
+    print(f"3) Banner mode: {CONFIG.get('banner_mode')} (menu/startup)")
+    print(f"4) Default wordlist: {CONFIG.get('default_wordlist')}")
+    print('5) Back')
+    choice = input_with_default('Choose setting to toggle/edit', '')
+    if choice == '1':
+        CONFIG['auto_clear'] = not CONFIG.get('auto_clear', True)
+        print(Fore.GREEN + f"Auto-clear set to {CONFIG['auto_clear']}")
+    elif choice == '2':
+        CONFIG['clipboard'] = not CONFIG.get('clipboard', True)
+        print(Fore.GREEN + f"Clipboard auto-copy set to {CONFIG['clipboard']}")
+    elif choice == '3':
+        bm = input_with_default('Banner mode (menu/startup)', CONFIG.get('banner_mode', 'menu'))
+        if bm in ('menu', 'startup'):
+            CONFIG['banner_mode'] = bm
+            print(Fore.GREEN + f"Banner mode set to {bm}")
+        else:
+            print(Fore.RED + 'Invalid value. Choose "menu" or "startup"')
+    elif choice == '4':
+        nw = input_with_default('Default wordlist path', CONFIG.get('default_wordlist', DEFAULT_WORDLIST))
+        CONFIG['default_wordlist'] = nw
+        print(Fore.GREEN + f"Default wordlist set to {nw}")
+    elif choice == '5':
+        return
+    else:
+        print(Fore.YELLOW + 'Unknown option')
+    save_json(CONFIG_PATH, CONFIG)
+    input(Fore.MAGENTA + '\nPress Enter to continue...' + Style.RESET_ALL)
+
+
+def help_menu():
+    print(Fore.CYAN + '\nHelp - Usage Examples' + Style.RESET_ALL)
+    print(Fore.YELLOW + 'Hydra HTTP POST form example:')
+    print('  hydra -L users.txt -P pass.txt 10.0.0.5 http-post-form "/login.php:username=^USER^&password=^PASS^:F=Incorrect"')
+    print('\nHydra SSH single user example:')
+    print('  hydra -l admin -P pass.txt -s 22 -t 4 10.0.0.5 ssh')
+    print('\nWPScan example:')
+    print('  wpscan --url http://10.0.0.5 --enumerate u --wordlist /path/rockyou.txt --threads 50')
+    print('\nLegal reminder: Only run generated commands against targets you own or have permissions for.')
+    input(Fore.MAGENTA + '\nPress Enter to continue...' + Style.RESET_ALL)
+
+# ------------------ Main grouped menu ------------------
+
+def main_menu():
+    cls()
+    if CONFIG.get('banner_mode','menu') == 'menu':
+        banner()
+    print(Fore.BLUE + '=== Network Protocols ===' + Style.RESET_ALL)
+    print('  1) SSH')
+    print('  2) FTP')
+    print('  3) Telnet')
+    print('  4) RDP')
+    print('  5) VNC')
+    print('\n' + Fore.MAGENTA + '=== Mail Services ===' + Style.RESET_ALL)
+    print('  6) SMTP AUTH')
+    print('  7) POP3')
+    print('  8) IMAP')
+    print('\n' + Fore.YELLOW + '=== Web Authentication ===' + Style.RESET_ALL)
+    print('  9) HTTP Basic Auth (http-get)')
+    print(' 10) HTTP POST Form')
+    print('\n' + Fore.GREEN + '=== Databases & Fileservices ===' + Style.RESET_ALL)
+    print(' 11) MySQL')
+    print(' 12) MSSQL')
+    print(' 13) SMB')
+    print('\n' + Fore.CYAN + '=== CMS & Tools ===' + Style.RESET_ALL)
+    print(' 14) WordPress (wpscan)')
+    print('\n' + Fore.MAGENTA + '=== Tools & Help ===' + Style.RESET_ALL)
+    print(' 15) Help')
+    print(' 16) View History')
+    print(' 17) Settings')
+    print(' 18) Exit')
+    choice = input_with_default('\nChoose an option', '')
+    return choice.strip()
+
+# ------------------ Startup consent ------------------
+
+def startup_permission_check():
+    cls()
+    banner()
+    print(Fore.RED + '\nLEGAL NOTICE: You must have explicit authorization to test any target.')
+    print('Type the consent token to continue:')
+    print(Fore.MAGENTA + '  I_HAVE_PERMISSION' + Style.RESET_ALL)
+    token = input(Fore.GREEN + '👉 Consent token: ' + Style.RESET_ALL).strip()
+    if token != 'I_HAVE_PERMISSION':
+        print(Fore.RED + 'Consent token incorrect. Exiting.')
+        sys.exit(1)
+
+
+def execute_command_interactive(cmd: str) -> None:
+    print(Fore.CYAN + '\nDo you want to run this command now? (Y/n): ' + Style.RESET_ALL, end='')
+    run_choice = input().strip().lower()
+    if run_choice in ('', 'y', 'yes'):
+        print(Fore.GREEN + '\n[+] Running the command (streaming output)...\n' + Style.RESET_ALL)
+        try:
+            subprocess.run(cmd, shell=True)
+        except KeyboardInterrupt:
+            print(Fore.RED + '\n[-] Execution interrupted by user.' + Style.RESET_ALL)
+        except Exception as e:
+            print(Fore.RED + f'\n[!] Error while running command: {e}' + Style.RESET_ALL)
+    else:
+        print(Fore.YELLOW + '[-] Command not executed. Returning to menu...' + Style.RESET_ALL)
+
+# ------------------ Main Loop ------------------
+
+def main():
+    # Ensure config and history exist
+    Path(HISTORY_PATH).touch(exist_ok=True)
+    save_json(CONFIG_PATH, CONFIG)
+
+    # Show startup banner if configured
+    if CONFIG.get('banner_mode') == 'startup':
+        cls(); banner()
+
+    # Consent check
+    startup_permission_check()
+
+    while True:
+        choice = main_menu()
+        if choice == '1':
+            cmd = generate_hydra('ssh')
+        elif choice == '2':
+            cmd = generate_hydra('ftp')
+        elif choice == '3':
+            cmd = generate_hydra('telnet')
+        elif choice == '4':
+            cmd = generate_hydra('rdp')
+        elif choice == '5':
+            cmd = generate_hydra('vnc')
+        elif choice == '6':
+            cmd = generate_hydra('smtp-auth')
+        elif choice == '7':
+            cmd = generate_hydra('pop3')
+        elif choice == '8':
+            cmd = generate_hydra('imap')
+        elif choice == '9':
+            cmd = generate_hydra('http-get')
+        elif choice == '10':
+            cmd = generate_hydra('http-form-post')
+        elif choice == '11':
+            cmd = generate_hydra('mysql')
+        elif choice == '12':
+            cmd = generate_hydra('mssql')
+        elif choice == '13':
+            cmd = generate_hydra('smb')
+        elif choice == '14':
+            cmd = generate_wpscan()
+        elif choice == '15':
+            help_menu(); continue
+        elif choice == '16':
+            show_history(); input(Fore.MAGENTA + '\nPress Enter to continue...' + Style.RESET_ALL); continue
+        elif choice == '17':
+            settings_menu(); continue
+        elif choice == '18' or choice.lower() in ('q','exit'):
+            print(Fore.CYAN + 'Goodbye — stay legal.')
+            break
+        else:
+            print(Fore.YELLOW + 'Unknown option, try again.')
+            input(Fore.MAGENTA + '\nPress Enter to continue...' + Style.RESET_ALL)
+            continue
+
+        # If generate_wpscan returned empty string (user chose Back) skip
+        if not cmd:
+            continue
+
+        cls()
+        if CONFIG.get('banner_mode','menu') == 'menu':
+            banner()
+        print(Fore.GREEN + '\n[Generated Command]:' + Style.RESET_ALL)
+        print(Fore.CYAN + cmd + Style.RESET_ALL)
+
+        copied = try_copy_clipboard(cmd)
+        if copied:
+            print(Fore.GREEN + '\nCommand copied to clipboard.' + Style.RESET_ALL)
+        else:
+            if CONFIG.get('clipboard', True):
+                print(Fore.YELLOW + '\nNote: pyperclip not installed or copy failed. Install pyperclip to enable clipboard copy.')
+
+        save_history(cmd)
+        print(Fore.MAGENTA + '\nSaved to history.' + Style.RESET_ALL)
+
+        # Offer to save to file
+        if choose_yes_no('Save command to a file?', default=False):
+            out = input_with_default('Path to output file', 'bruteplus_command.txt')
+            try:
+                with open(out, 'a') as fh:
+                    fh.write(cmd + '\n')
+                print(Fore.GREEN + f'Saved to {out}')
+            except Exception as e:
+                print(Fore.RED + f'Failed to save: {e}')
+
+        # Ask to run the command
+        execute_command_interactive(cmd)
+
+        input(Fore.MAGENTA + '\nPress Enter to return to menu...' + Style.RESET_ALL)
+
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print('\n' + Fore.YELLOW + 'Interrupted. Bye.' + Style.RESET_ALL)
+        sys.exit(0)
