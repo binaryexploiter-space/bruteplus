@@ -63,7 +63,7 @@ After installation, you can simply run:
 ```bash
 bruteplus
 ```
-📄 Usage
+## 📄 Usage
 
 Run the tool:
 ```bash
@@ -75,3 +75,37 @@ Follow the interactive menus to:
     <li>Copy them automatically to your clipboard</li>
     <li>Optionally execute them right from the tool</li></ul>
 Commands are also saved to ~/.bruteplus_history.
+
+### ⚡ Example
+```text
+Select Service:
+1) SSH
+2) FTP
+3) HTTP POST Form
+...
+14) WordPress
+```
+After filling in prompts, the tool generates:
+```bash
+hydra -l admin -P /usr/share/wordlists/rockyou.txt -s 22 -t 4 10.10.10.10 ssh
+```
+Then asks:
+```bash
+Do you want to run this command now? (Y/n):
+```
+## 🧠 Pro Tips
+
+<ul><li>You can edit the config file at ~/.bruteplus_config.json for defaults like wordlists, banner settings, etc.</li>
+<li>All generated commands are stored in ~/.bruteplus_history for quick reuse.</li></ul>
+
+## 🧪 Tested On
+<ul>
+<li>Kali Linux (2025.2)</li>
+<li>Parrot OS</li>
+<li>Ubuntu 22.04 LTS</li></ul>
+
+## 📝 License
+
+<b>MIT License © 2025 Oshan Ravindu</b>
+
+## ⭐ If you find this tool useful, give it a star on GitHub!
