@@ -107,6 +107,6 @@ Do you want to run this command now? (Y/n):
 
 ## 📝 License
 
-<b>MIT License © 2025 Oshan Ravindu</b>
+<b>License © 2025 Oshan Ravindu</b>
 
 ## ⭐ If you find this tool useful, give it a star on GitHub!
