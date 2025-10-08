@@ -71,7 +71,7 @@ bruteplus
 ```
 Follow the interactive menus to:
 
-<ul><li>Generate brute force commands for Hydra or WPScan</ul>
+<ul><li>Generate brute force commands for Hydra or WPScan
     <li>Copy them automatically to your clipboard</li>
     <li>Optionally execute them right from the tool</li></ul>
 Commands are also saved to ~/.bruteplus_history.
