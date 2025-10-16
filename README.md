@@ -43,7 +43,7 @@ Before installing, make sure you have:
 
 ### 1️⃣ Clone the repository
 ```bash
-git clone https://github.com/yourusername/bruteplus.git
+git clone https://github.com/binaryexploiter-space/bruteplus.git
 cd bruteplus
 ```
 ### 2️⃣ Install Python dependencies
